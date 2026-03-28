@@ -70,6 +70,35 @@ function resolveGatewayToken() {
 const OPENCLAW_GATEWAY_TOKEN = resolveGatewayToken();
 process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
 
+const SETUP_PREFILL_ENV_MAP = {
+  authSecret: ["OPENCLAW_SETUP_AUTH_SECRET", "MINIMAX_API_KEY"],
+  telegramToken: ["OPENCLAW_SETUP_TELEGRAM_TOKEN", "TELEGRAM_BOT_TOKEN"],
+  telegramUserId: ["OPENCLAW_SETUP_TELEGRAM_USER_ID", "TELEGRAM_USER_ID"],
+  telegramPairingCode: ["OPENCLAW_SETUP_TELEGRAM_PAIRING_CODE", "TELEGRAM_PAIRING_CODE"],
+  discordToken: ["OPENCLAW_SETUP_DISCORD_TOKEN", "DISCORD_BOT_TOKEN"],
+  slackBotToken: ["OPENCLAW_SETUP_SLACK_BOT_TOKEN", "SLACK_BOT_TOKEN"],
+  slackAppToken: ["OPENCLAW_SETUP_SLACK_APP_TOKEN", "SLACK_APP_TOKEN"],
+  customProviderId: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_ID"],
+  customProviderBaseUrl: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_BASE_URL"],
+  customProviderApi: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_API"],
+  customProviderApiKeyEnv: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_API_KEY_ENV"],
+  customProviderModelId: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_MODEL_ID"],
+};
+
+function buildSetupPrefillFromEnv() {
+  const defaults = {};
+  for (const [field, keys] of Object.entries(SETUP_PREFILL_ENV_MAP)) {
+    for (const key of keys) {
+      const value = process.env[key]?.trim();
+      if (value) {
+        defaults[field] = value;
+        break;
+      }
+    }
+  }
+  return defaults;
+}
+
 // Where the gateway will listen internally (we proxy to it).
 const INTERNAL_GATEWAY_PORT = Number.parseInt(process.env.INTERNAL_GATEWAY_PORT ?? "18789", 10);
 const INTERNAL_GATEWAY_HOST = process.env.INTERNAL_GATEWAY_HOST ?? "127.0.0.1";
@@ -469,6 +498,14 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
 
     <label>Telegram bot token (optional)</label>
     <input id="telegramToken" type="password" placeholder="123456:ABC..." />
+    <label>Telegram user id (optional)</label>
+    <input id="telegramUserId" placeholder="e.g. 123456789" />
+
+    <label>Telegram pairing code (optional)</label>
+    <input id="telegramPairingCode" placeholder="e.g. WF6G56US" />
+    <div class="muted" style="margin-top: 0.25rem">
+      If provided, setup will auto-run <code>openclaw pairing approve telegram &lt;code&gt;</code>.
+    </div>
     <div class="muted" style="margin-top: 0.25rem">
       Get it from BotFather: open Telegram, message <code>@BotFather</code>, run <code>/newbot</code>, then copy the token.
     </div>
@@ -594,6 +631,10 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
 
 app.get("/setup/api/auth-groups", requireSetupAuth, (_req, res) => {
   res.json({ ok: true, authGroups: AUTH_GROUPS });
+});
+
+app.get("/setup/api/prefill", requireSetupAuth, (_req, res) => {
+  res.json({ ok: true, defaults: buildSetupPrefillFromEnv() });
 });
 
 function buildOnboardArgs(payload) {
@@ -867,6 +908,14 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         extra += `\n[slack config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
         extra += `\n[slack verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
       }
+    }
+
+    if (payload.telegramPairingCode?.trim()) {
+      const approve = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["pairing", "approve", "telegram", payload.telegramPairingCode.trim()]),
+      );
+      extra += `\n[telegram pairing approve] exit=${approve.code} (output ${approve.output.length} chars)\n${approve.output || "(no output)"}`;
     }
 
     // Apply changes immediately.
