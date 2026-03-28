@@ -131,7 +131,7 @@ If `openclaw devices list` shows no pending request IDs:
 
 ### WeChat (Tencent iLink Bot API) plugin
 
-This image now preinstalls `@tencent-weixin/openclaw-weixin@2.1.1` at build time and pins OpenClaw to `v2026.3.27` by default.
+This image now preinstalls `@tencent-weixin/openclaw-weixin@2.1.1` at build time and pins OpenClaw to `v2026.3.24` by default.
 
 After deployment:
 - Enable the plugin once (from `/setup` Debug Console or shell):
@@ -149,7 +149,7 @@ If plugin status is `error` with a message like:
 
 do this sequence before attempting QR login:
 
-1) Upgrade/redeploy so core is at least `v2026.3.27` (default in this template now).
+1) Upgrade/redeploy so core is at least `v2026.3.24` (default in this template now).
 2) Reinstall and pin the plugin:
    - `openclaw plugins uninstall openclaw-weixin`
    - `openclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --pin`
