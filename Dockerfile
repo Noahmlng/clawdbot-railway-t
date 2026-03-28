@@ -79,9 +79,14 @@ RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"'
 # Preinstall Tencent Weixin channel plugin at image build time so setup users can
 # enable/login without needing runtime plugin installation capability.
 # v2.x requires OpenClaw >= 2026.3.22. Pin to 2.1.1 for deterministic builds.
-RUN OPENCLAW_STATE_DIR=/openclaw/.openclaw \
-  OPENCLAW_WORKSPACE_DIR=/openclaw/.workspace \
-  node /openclaw/dist/entry.js plugins install "@tencent-weixin/openclaw-weixin@2.1.1" --pin
+ARG OPENCLAW_PREINSTALL_WEIXIN=0
+RUN if [ "${OPENCLAW_PREINSTALL_WEIXIN}" = "1" ]; then \
+    OPENCLAW_STATE_DIR=/openclaw/.openclaw \
+    OPENCLAW_WORKSPACE_DIR=/openclaw/.workspace \
+    node /openclaw/dist/entry.js plugins install "@tencent-weixin/openclaw-weixin@2.1.1" --pin; \
+  else \
+    echo "Skipping Weixin plugin preinstall (OPENCLAW_PREINSTALL_WEIXIN=${OPENCLAW_PREINSTALL_WEIXIN})"; \
+  fi
 
 COPY src ./src
 
