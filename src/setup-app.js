@@ -149,12 +149,27 @@
     });
   }
 
+  function applyPrefillDefaults() {
+    return httpJson('/setup/api/prefill').then(function (j) {
+      var defaults = (j && j.defaults) ? j.defaults : {};
+      Object.keys(defaults).forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el || el.value) return;
+        el.value = defaults[id];
+      });
+    }).catch(function (_e) {
+      // best-effort
+    });
+  }
+
   document.getElementById('run').onclick = function () {
     var payload = {
       flow: document.getElementById('flow').value,
       authChoice: authChoiceEl.value,
       authSecret: document.getElementById('authSecret').value,
       telegramToken: document.getElementById('telegramToken').value,
+      telegramUserId: document.getElementById('telegramUserId').value,
+      telegramPairingCode: document.getElementById('telegramPairingCode').value,
       discordToken: document.getElementById('discordToken').value,
       slackBotToken: document.getElementById('slackBotToken').value,
       slackAppToken: document.getElementById('slackAppToken').value,
@@ -365,6 +380,7 @@
 
   // Populate provider/auth selects ASAP (fast endpoint, no subprocesses)
   loadAuthGroupsFast();
+  applyPrefillDefaults();
 
   // Load the rest of status (version/help) in parallel
   refreshStatus();

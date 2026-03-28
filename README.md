@@ -34,9 +34,15 @@ Recommended:
 
 Optional:
 - `OPENCLAW_GATEWAY_TOKEN` — if not set, the wrapper generates one (not ideal). In a template, set it using a generated secret.
+- `OPENCLAW_SETUP_AUTH_SECRET` — prefill the setup “Key / Token” field (useful for providers like MiniMax)
+- `OPENCLAW_SETUP_TELEGRAM_TOKEN` — prefill Telegram bot token in `/setup`
+- `OPENCLAW_SETUP_TELEGRAM_USER_ID` — prefill Telegram user id in `/setup`
+- `OPENCLAW_SETUP_TELEGRAM_PAIRING_CODE` — prefill Telegram pairing code in `/setup` and auto-approve during setup
+- `OPENCLAW_SETUP_CUSTOM_PROVIDER_ID`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_BASE_URL`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_API`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_API_KEY_ENV`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_MODEL_ID` — prefill advanced custom provider fields
 
 Notes:
 - This template pins OpenClaw to a released version by default via Docker build arg `OPENCLAW_GIT_REF` (override if you want `main`).
+- Never commit real API keys/tokens into Git-tracked files. Put secrets in Railway Variables (or local `.env`) only.
 
 4) Enable **Public Networking** (HTTP). Railway will assign a domain.
    - This service listens on Railway’s injected `PORT` at runtime (recommended).
