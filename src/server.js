@@ -69,6 +69,7 @@ function resolveGatewayToken() {
 
 const OPENCLAW_GATEWAY_TOKEN = resolveGatewayToken();
 process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
+const OPENCLAW_WEBHOOK_SECRET = process.env.OPENCLAW_WEBHOOK_SECRET?.trim() || "";
 
 const SETUP_PREFILL_ENV_MAP = {
   authSecret: ["OPENCLAW_SETUP_AUTH_SECRET", "MINIMAX_API_KEY"],
@@ -97,6 +98,23 @@ function buildSetupPrefillFromEnv() {
     }
   }
   return defaults;
+}
+
+function safeSecretEquals(a, b) {
+  if (!a || !b) return false;
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function livionEventSummary(payload) {
+  const entity = payload?.entity && typeof payload.entity === "object" ? payload.entity : {};
+  const eventType = typeof payload?.eventType === "string" ? payload.eventType : "unknown";
+  const entityType = typeof entity.type === "string" ? entity.type : "unknown";
+  const entityId = entity.id ?? "unknown";
+  const title = typeof entity.title === "string" ? entity.title : "";
+  return `[livion] ${eventType} entity=${entityType}:${entityId}${title ? ` title="${title}"` : ""}`;
 }
 
 // Where the gateway will listen internally (we proxy to it).
@@ -380,6 +398,45 @@ app.get("/healthz", async (_req, res) => {
       lastExit: lastGatewayExit,
       lastDoctorAt,
     },
+  });
+});
+
+app.post("/webhooks/livion", async (req, res) => {
+  const requestId = crypto.randomUUID();
+  const providedSecret = String(req.get("x-livion-shared-secret") || "").trim();
+
+  if (!OPENCLAW_WEBHOOK_SECRET) {
+    return res.status(503).json({
+      ok: false,
+      requestId,
+      error: "OPENCLAW_WEBHOOK_SECRET is not configured",
+    });
+  }
+
+  if (!safeSecretEquals(providedSecret, OPENCLAW_WEBHOOK_SECRET)) {
+    return res.status(401).json({ ok: false, requestId, error: "invalid shared secret" });
+  }
+
+  const payload = req.body;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return res.status(400).json({ ok: false, requestId, error: "invalid JSON payload" });
+  }
+  if (typeof payload.eventId !== "string" || typeof payload.eventType !== "string") {
+    return res.status(400).json({ ok: false, requestId, error: "missing eventId/eventType" });
+  }
+  if (payload.source && payload.source !== "livion") {
+    return res.status(400).json({ ok: false, requestId, error: "invalid source" });
+  }
+
+  console.log(`${livionEventSummary(payload)} requestId=${requestId}`);
+
+  // Minimal inbox behavior for observability: acknowledge ingestion.
+  // OpenClaw event routing can be layered on top later via hook actions/pipelines.
+  return res.status(202).json({
+    ok: true,
+    requestId,
+    acceptedAt: new Date().toISOString(),
+    source: "livion",
   });
 });
 
@@ -793,6 +850,13 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
+    if (OPENCLAW_WEBHOOK_SECRET) {
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "hooks.enabled", "true"]));
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "hooks.path", "/hooks"]));
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "hooks.token", OPENCLAW_WEBHOOK_SECRET]));
+    } else {
+      extra += "\n[hooks] OPENCLAW_WEBHOOK_SECRET not set; livion webhook auth is disabled\n";
+    }
 
     // Railway runs behind a reverse proxy. Trust loopback as a proxy hop so local client detection
     // remains correct when X-Forwarded-* headers are present.
@@ -1397,6 +1461,7 @@ proxy.on("error", (err, _req, res) => {
 function requireDashboardAuth(req, res, next) {
   if (req.path === "/healthz" || req.path === "/setup/healthz") return next();
   if (req.path.startsWith("/hooks")) return next(); // allow OpenClaw webhook endpoints to bypass dashboard auth
+  if (req.path.startsWith("/webhooks/")) return next(); // allow external webhook inbox endpoints
   if (!SETUP_PASSWORD) return next(); // no password configured → open
   const header = req.headers.authorization || "";
   const [scheme, encoded] = header.split(" ");
