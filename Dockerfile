@@ -22,7 +22,7 @@ WORKDIR /openclaw
 
 # Pin to a known-good ref (tag/branch). Override in Railway template settings if needed.
 # Using a released tag avoids build breakage when `main` temporarily references unpublished packages.
-ARG OPENCLAW_GIT_REF=v2026.3.8
+ARG OPENCLAW_GIT_REF=v2026.3.22
 RUN git clone --depth 1 --branch "${OPENCLAW_GIT_REF}" https://github.com/openclaw/openclaw.git .
 
 # Patch: relax version requirements for packages that may reference unpublished versions.
@@ -75,6 +75,13 @@ COPY --from=openclaw-build /openclaw /openclaw
 # Provide an openclaw executable
 RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"' > /usr/local/bin/openclaw \
   && chmod +x /usr/local/bin/openclaw
+
+# Preinstall Tencent Weixin channel plugin at image build time so setup users can
+# enable/login without needing runtime plugin installation capability.
+# v2.x requires OpenClaw >= 2026.3.22 (see pinned default ref above).
+RUN OPENCLAW_STATE_DIR=/openclaw/.openclaw \
+  OPENCLAW_WORKSPACE_DIR=/openclaw/.workspace \
+  node /openclaw/dist/entry.js plugins install "@tencent-weixin/openclaw-weixin"
 
 COPY src ./src
 

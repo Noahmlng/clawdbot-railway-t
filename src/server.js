@@ -419,6 +419,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
         <option value="openclaw.devices.approve">openclaw devices approve &lt;requestId&gt;</option>
         <option value="openclaw.plugins.list">openclaw plugins list</option>
         <option value="openclaw.plugins.enable">openclaw plugins enable &lt;name&gt;</option>
+        <option value="openclaw.plugins.install">openclaw plugins install &lt;packageOrName&gt;</option>
       </select>
       <input id="consoleArg" placeholder="Optional arg (e.g. 200, gateway.port)" style="flex: 1" />
       <button id="consoleRun" style="background:#0f172a">Run</button>
@@ -987,6 +988,7 @@ const ALLOWED_CONSOLE_COMMANDS = new Set([
   // Plugin management
   "openclaw.plugins.list",
   "openclaw.plugins.enable",
+  "openclaw.plugins.install",
 ]);
 
 app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
@@ -1070,6 +1072,14 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
       if (!name) return res.status(400).json({ ok: false, error: "Missing plugin name" });
       if (!/^[A-Za-z0-9_-]+$/.test(name)) return res.status(400).json({ ok: false, error: "Invalid plugin name" });
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", name]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+    if (cmd === "openclaw.plugins.install") {
+      const plugin = String(arg || "").trim();
+      if (!plugin) return res.status(400).json({ ok: false, error: "Missing plugin package/name" });
+      if (plugin.length > 128) return res.status(400).json({ ok: false, error: "Plugin package/name too long" });
+      if (!/^[A-Za-z0-9_@./-]+$/.test(plugin)) return res.status(400).json({ ok: false, error: "Invalid plugin package/name" });
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "install", plugin]));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
 

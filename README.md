@@ -123,6 +123,20 @@ If `openclaw devices list` shows no pending request IDs:
 - Ensure your state dir is the Railway volume (recommended): `OPENCLAW_STATE_DIR=/data/.openclaw`
 - Check `/setup/api/debug` for the active state/workspace dirs + gateway readiness
 
+### WeChat (Tencent iLink Bot API) plugin
+
+This image now preinstalls `@tencent-weixin/openclaw-weixin` at build time and pins OpenClaw to `v2026.3.22` by default (minimum required by Weixin plugin v2.x).
+
+After deployment:
+- Enable the plugin once (from `/setup` Debug Console or shell):
+  - `openclaw plugins enable openclaw-weixin`
+- Login the channel by QR scan:
+  - `openclaw channels login --channel openclaw-weixin`
+
+Notes:
+- The Tencent plugin uses Tencent iLink Bot API.
+- Current Tencent plugin behavior is private chat only.
+
 ### “unauthorized: gateway token mismatch”
 
 The Control UI connects using `gateway.remote.token` and the gateway validates `gateway.auth.token`.
