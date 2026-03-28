@@ -131,7 +131,21 @@ If `openclaw devices list` shows no pending request IDs:
 
 ### WeChat (Tencent iLink Bot API) plugin
 
-This image now preinstalls `@tencent-weixin/openclaw-weixin@2.1.1` at build time and pins OpenClaw to `v2026.3.24` by default.
+By default, this image **skips** preinstalling `@tencent-weixin/openclaw-weixin@2.1.1` during Docker build to avoid build-stage package registry rate limits.
+
+If you still want build-time preinstall, enable the Docker build arg:
+
+- `OPENCLAW_PREINSTALL_WEIXIN=1` (default is `0`)
+
+In Railway:
+1) Open your service → **Settings** → **Build**.
+2) Add/append build argument: `OPENCLAW_PREINSTALL_WEIXIN=1`.
+3) Redeploy.
+
+Production recommendation:
+- Prefer installing the plugin after first boot so artifacts land in the persistent `/data` volume, which is more resilient than build-stage installs under registry throttling.
+- Install from `/setup` Debug Console or shell after deployment:
+  - `openclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --pin`
 
 After deployment:
 - Enable the plugin once (from `/setup` Debug Console or shell):
