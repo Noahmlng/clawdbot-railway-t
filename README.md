@@ -215,6 +215,24 @@ Recommendations:
 - Use a plan with **2GB+ memory**.
 - If you see `Reached heap limit Allocation failed - JavaScript heap out of memory`, upgrade memory and redeploy.
 
+### ClawHub 429 (Rate limit exceeded) during Docker build
+
+If Docker build logs show `429` or `Rate limit exceeded` while preinstalling plugins, it usually means ClawHub/npm registry throttled the build worker.
+
+What this template does now:
+- Build-time plugin preinstall retries up to **5 attempts**.
+- Backoff intervals are **2s / 4s / 8s / 16s** for rate-limit failures only.
+- Non-rate-limit failures still fail fast.
+
+If build still fails after retries:
+1) Redeploy after a short cooldown (rate limits are often temporary).
+2) Disable build-time plugin preinstall in `Dockerfile`.
+3) Install at runtime from `/setup` Debug Console or shell:
+   - `openclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --pin`
+4) Then enable/login as usual:
+   - `openclaw plugins enable openclaw-weixin`
+   - `openclaw channels login --channel openclaw-weixin`
+
 ## Local smoke test
 
 ```bash
