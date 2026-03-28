@@ -125,7 +125,7 @@ If `openclaw devices list` shows no pending request IDs:
 
 ### WeChat (Tencent iLink Bot API) plugin
 
-This image now preinstalls `@tencent-weixin/openclaw-weixin` at build time and pins OpenClaw to `v2026.3.22` by default (minimum required by Weixin plugin v2.x).
+This image now preinstalls `@tencent-weixin/openclaw-weixin@2.1.1` at build time and pins OpenClaw to `v2026.3.27` by default.
 
 After deployment:
 - Enable the plugin once (from `/setup` Debug Console or shell):
@@ -136,6 +136,30 @@ After deployment:
 Notes:
 - The Tencent plugin uses Tencent iLink Bot API.
 - Current Tencent plugin behavior is private chat only.
+
+If plugin status is `error` with a message like:
+
+`Cannot find module 'openclaw/plugin-sdk/channel-config-schema'`
+
+do this sequence before attempting QR login:
+
+1) Upgrade/redeploy so core is at least `v2026.3.27` (default in this template now).
+2) Reinstall and pin the plugin:
+   - `openclaw plugins uninstall openclaw-weixin`
+   - `openclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --pin`
+3) Check plugin health:
+   - `openclaw plugins inspect openclaw-weixin`
+   - `openclaw plugins doctor`
+4) Restart gateway after plugin changes.
+5) Add an explicit allowlist entry in your config (plugin id, not package name):
+
+```json
+{
+  "plugins": {
+    "allow": ["openclaw-weixin"]
+  }
+}
+```
 
 ### “unauthorized: gateway token mismatch”
 
