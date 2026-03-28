@@ -107,6 +107,14 @@ RUN bash -lc 'set -euo pipefail; \
     echo "Plugin preinstall failed with a non-rate-limit error; aborting without retry."; \
     exit "$status"; \
   done'
+ARG OPENCLAW_PREINSTALL_WEIXIN=0
+RUN if [ "${OPENCLAW_PREINSTALL_WEIXIN}" = "1" ]; then \
+    OPENCLAW_STATE_DIR=/openclaw/.openclaw \
+    OPENCLAW_WORKSPACE_DIR=/openclaw/.workspace \
+    node /openclaw/dist/entry.js plugins install "@tencent-weixin/openclaw-weixin@2.1.1" --pin; \
+  else \
+    echo "Skipping Weixin plugin preinstall (OPENCLAW_PREINSTALL_WEIXIN=${OPENCLAW_PREINSTALL_WEIXIN})"; \
+  fi
 
 COPY src ./src
 
