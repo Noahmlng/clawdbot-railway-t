@@ -561,8 +561,8 @@ const AUTH_GROUPS = [
     { value: "zai-api-key", label: "Z.AI (GLM 4.7) API key" }
   ]},
   { value: "minimax", label: "MiniMax", hint: "M2.1 (recommended)", options: [
-    { value: "minimax-api", label: "MiniMax M2.1" },
-    { value: "minimax-api-lightning", label: "MiniMax M2.1 Lightning" }
+    { value: "minimax-global-api", label: "MiniMax M2.1 (Global API)" },
+    { value: "minimax-global-api-lightning", label: "MiniMax M2.1 Lightning (Global API)" }
   ]},
   { value: "qwen", label: "Qwen", hint: "OAuth", options: [
     { value: "qwen-portal", label: "Qwen OAuth" }
@@ -633,6 +633,10 @@ function buildOnboardArgs(payload) {
       "kimi-code-api-key": "--kimi-code-api-key",
       "gemini-api-key": "--gemini-api-key",
       "zai-api-key": "--zai-api-key",
+      // MiniMax renamed auth choices from minimax-api* to minimax-global-api*.
+      // Keep legacy keys for backward compatibility with older clients.
+      "minimax-global-api": "--minimax-api-key",
+      "minimax-global-api-lightning": "--minimax-api-key",
       "minimax-api": "--minimax-api-key",
       "minimax-api-lightning": "--minimax-api-key",
       "synthetic-api-key": "--synthetic-api-key",
