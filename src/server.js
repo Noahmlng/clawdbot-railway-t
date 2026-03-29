@@ -100,6 +100,59 @@ function buildSetupPrefillFromEnv() {
   return defaults;
 }
 
+function normalizeAllowedOrigin(rawOrigin) {
+  const candidate = String(rawOrigin || "").trim();
+  if (!candidate) return null;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+    if (parsed.pathname && parsed.pathname !== "/") return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function resolveControlUiAllowedOrigins() {
+  const explicitOrigins = process.env.OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS?.trim();
+  const railwayPublicDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+
+  const source = explicitOrigins
+    ? "OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS"
+    : railwayPublicDomain
+      ? "RAILWAY_PUBLIC_DOMAIN"
+      : null;
+
+  const rawOrigins = explicitOrigins
+    ? explicitOrigins.split(",")
+    : railwayPublicDomain
+      ? [`https://${railwayPublicDomain}`]
+      : [];
+
+  const origins = [];
+  const invalid = [];
+  for (const rawOrigin of rawOrigins) {
+    const normalized = normalizeAllowedOrigin(rawOrigin);
+    if (!normalized) {
+      const candidate = String(rawOrigin || "").trim();
+      if (candidate) invalid.push(candidate);
+      continue;
+    }
+    if (!origins.includes(normalized)) origins.push(normalized);
+  }
+
+  return {
+    origins,
+    invalid,
+    source,
+    railwayPublicDomain: railwayPublicDomain || null,
+  };
+}
+
+const CONTROL_UI_ORIGIN_CONFIG = resolveControlUiAllowedOrigins();
+
 function safeSecretEquals(a, b) {
   if (!a || !b) return false;
   const aBuf = Buffer.from(a, "utf8");
@@ -316,6 +369,34 @@ async function restartGateway() {
     gatewayProc = null;
   }
   return ensureGatewayRunning();
+}
+
+async function syncControlUiAllowedOrigins(logPrefix = "wrapper") {
+  const { origins, invalid, source } = CONTROL_UI_ORIGIN_CONFIG;
+
+  if (invalid.length) {
+    console.warn(`[${logPrefix}] ignoring invalid control UI origins from ${source}: ${invalid.join(", ")}`);
+  }
+
+  if (!origins.length) {
+    const detail = source
+      ? `no valid control UI origins derived from ${source}`
+      : "OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS and RAILWAY_PUBLIC_DOMAIN are unset";
+    console.warn(`[${logPrefix}] ${detail}; leaving gateway.controlUi.allowedOrigins unchanged`);
+    return { applied: false, origins, source };
+  }
+
+  const result = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["config", "set", "--json", "gateway.controlUi.allowedOrigins", JSON.stringify(origins)]),
+  );
+
+  if (result.code !== 0) {
+    console.warn(`[${logPrefix}] failed to sync gateway.controlUi.allowedOrigins: ${redactSecrets(result.output || "")}`);
+    return { applied: false, origins, source, output: result.output };
+  }
+
+  return { applied: true, origins, source, output: result.output };
 }
 
 function requireSetupAuth(req, res, next) {
@@ -848,6 +929,12 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.mode", "token"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.token", OPENCLAW_GATEWAY_TOKEN]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
+    const controlUiOriginSync = await syncControlUiAllowedOrigins("setup");
+    if (controlUiOriginSync.applied) {
+      extra += `\n[control-ui origins] synced from ${controlUiOriginSync.source}: ${controlUiOriginSync.origins.join(", ")}\n`;
+    } else {
+      extra += "\n[control-ui origins] not updated; keeping any existing gateway.controlUi.allowedOrigins value\n";
+    }
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
     if (OPENCLAW_WEBHOOK_SECRET) {
@@ -1007,11 +1094,13 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
 app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
   const v = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
   const help = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
+  const controlUiOrigins = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "gateway.controlUi.allowedOrigins"]));
 
   // Channel config checks (redact secrets before returning to client)
   const tg = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.telegram"]));
   const dc = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.discord"]));
 
+  const controlUiOriginsOut = redactSecrets(controlUiOrigins.output || "");
   const tgOut = redactSecrets(tg.output || "");
   const dcOut = redactSecrets(dc.output || "");
 
@@ -1031,6 +1120,10 @@ app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
       gatewayRunning: Boolean(gatewayProc),
       gatewayTokenFromEnv: Boolean(process.env.OPENCLAW_GATEWAY_TOKEN?.trim()),
       gatewayTokenPersisted: fs.existsSync(path.join(STATE_DIR, "gateway.token")),
+      controlUiAllowedOrigins: CONTROL_UI_ORIGIN_CONFIG.origins,
+      controlUiAllowedOriginsSource: CONTROL_UI_ORIGIN_CONFIG.source,
+      controlUiAllowedOriginsInvalid: CONTROL_UI_ORIGIN_CONFIG.invalid,
+      railwayPublicDomain: CONTROL_UI_ORIGIN_CONFIG.railwayPublicDomain,
       lastGatewayError,
       lastGatewayExit,
       lastDoctorAt,
@@ -1041,6 +1134,10 @@ app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
       entry: OPENCLAW_ENTRY,
       node: OPENCLAW_NODE,
       version: v.output.trim(),
+      controlUiAllowedOriginsConfigured: {
+        exit: controlUiOrigins.code,
+        output: controlUiOriginsOut,
+      },
       channelsAddHelpIncludesTelegram: help.output.includes("telegram"),
       channels: {
         telegram: {
@@ -1568,6 +1665,12 @@ const server = app.listen(PORT, "0.0.0.0", async () => {
       await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.mode", "token"]));
       await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.token", OPENCLAW_GATEWAY_TOKEN]));
       await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
+      const controlUiOriginSync = await syncControlUiAllowedOrigins("wrapper");
+      if (controlUiOriginSync.applied) {
+        console.log(
+          `[wrapper] control UI allowed origins synced from ${controlUiOriginSync.source}: ${controlUiOriginSync.origins.join(", ")}`,
+        );
+      }
       console.log("[wrapper] gateway tokens synced");
     } catch (err) {
       console.warn(`[wrapper] failed to sync gateway tokens: ${String(err)}`);

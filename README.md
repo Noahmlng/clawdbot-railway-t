@@ -34,6 +34,7 @@ Recommended:
 
 Optional:
 - `OPENCLAW_GATEWAY_TOKEN` — if not set, the wrapper generates one (not ideal). In a template, set it using a generated secret.
+- `OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS` — comma-separated full origins allowed to open the remote Control UI WebSocket (recommended for Railway/custom domains), e.g. `https://foo.up.railway.app,https://bot.example.com`
 - `OPENCLAW_SETUP_AUTH_SECRET` — prefill the setup “Key / Token” field (useful for providers like MiniMax)
 - `OPENCLAW_SETUP_TELEGRAM_TOKEN` — prefill Telegram bot token in `/setup`
 - `OPENCLAW_SETUP_TELEGRAM_USER_ID` — prefill Telegram user id in `/setup`
@@ -43,6 +44,7 @@ Optional:
 Notes:
 - This template pins OpenClaw to a released version by default via Docker build arg `OPENCLAW_GIT_REF` (override if you want `main`).
 - Never commit real API keys/tokens into Git-tracked files. Put secrets in Railway Variables (or local `.env`) only.
+- The wrapper falls back to `RAILWAY_PUBLIC_DOMAIN` when `OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS` is unset, but Railway template deploys can leave `RAILWAY_PUBLIC_DOMAIN` empty on first deploy. Set `OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS` explicitly if you want predictable remote Control UI access.
 
 4) Enable **Public Networking** (HTTP). Railway will assign a domain.
    - This service listens on Railway’s injected `PORT` at runtime (recommended).
@@ -92,6 +94,9 @@ What persists cleanly today:
 What does *not* persist cleanly:
 - `apt-get install ...` (installs into `/usr/*`)
 - Homebrew installs (typically `/opt/homebrew` or similar)
+
+Repository note:
+- The checked-in [`data/`](data) directory is a local snapshot of runtime `/data/workspace`, not the full Railway `/data` volume.
 
 ### Optional bootstrap hook
 
@@ -188,6 +193,20 @@ The Control UI connects using `gateway.remote.token` and the gateway validates `
 Fix:
 - Re-run `/setup` so the wrapper writes both tokens.
 - Or set both values to the same token in config.
+
+### “origin not allowed” in `/openclaw`
+
+This means the Gateway is rejecting the browser origin for the Control UI WebSocket.
+
+Fix:
+- Set `OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS` to a comma-separated list of full origins, for example `https://your-app.up.railway.app`
+- Redeploy so the wrapper can sync `gateway.controlUi.allowedOrigins`
+- Verify the active values in `/setup/api/debug`
+
+Notes:
+- The wrapper will fall back to `RAILWAY_PUBLIC_DOMAIN` when available, but Railway template deploys may leave that variable empty on the first deploy
+- OpenClaw requires explicit remote origins for non-loopback Control UI deployments: [Control UI docs](https://docs.openclaw.ai/web/control-ui)
+- Railway template caveat reference: [RAILWAY_PUBLIC_DOMAIN may be empty on template deploys](https://station.railway.com/questions/railway-public-domain-is-always-empty-wh-ae6fd3af)
 
 ### “Application failed to respond” / 502 Bad Gateway
 
