@@ -1,6 +1,6 @@
 # AGENTS.md - Workspace Policy
 
-This `data/` directory is a local snapshot of the runtime `/data/workspace` folder used on Railway.
+This folder is the working policy and memory space for this OpenClaw instance.
 
 ## Core behavior
 
