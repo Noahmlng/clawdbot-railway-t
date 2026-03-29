@@ -13,3 +13,8 @@ npm-debug.log*
 
 # OS
 .DS_Store
+
+# Local workspace snapshot noise
+data/.DS_Store
+data/.git/
+data/.openclaw/
