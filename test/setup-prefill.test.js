@@ -15,3 +15,11 @@ test("setup UI submits telegram pairing code", () => {
   assert.match(src, /telegramPairingCode/);
   assert.match(src, /\/setup\/api\/prefill/);
 });
+
+test("setup uses telegram user id to pre-authorize DM access when provided", () => {
+  const src = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(src, /payload\.telegramUserId/);
+  assert.match(src, /const telegramAllowFrom = \/\^\\d\+\$\/\.test\(telegramOwnerId\) \? \[telegramOwnerId\] : undefined;/);
+  assert.match(src, /dmPolicy: telegramAllowFrom \? "allowlist" : "pairing"/);
+  assert.match(src, /allowFrom: telegramAllowFrom/);
+});
