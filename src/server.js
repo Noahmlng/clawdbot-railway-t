@@ -8,8 +8,6 @@ import express from "express";
 import httpProxy from "http-proxy";
 import * as tar from "tar";
 
-import { applyKnownConfigMigrations } from "./config-migrations.js";
-
 // Migrate deprecated CLAWDBOT_* env vars → OPENCLAW_* so existing Railway deployments
 // keep working. Users should update their Railway Variables to use the new names.
 for (const suffix of ["PUBLIC_PORT", "STATE_DIR", "WORKSPACE_DIR", "GATEWAY_TOKEN", "CONFIG_PATH"]) {
@@ -205,49 +203,6 @@ function configPath() {
   return candidates[0] || path.join(STATE_DIR, "openclaw.json");
 }
 
-function repairConfigFileIfNeeded() {
-  const filePath = configPath();
-  if (!fs.existsSync(filePath)) {
-    return { changed: false, applied: [] };
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
-    return { changed: false, applied: [] };
-  }
-
-  const { config: nextConfig, applied } = applyKnownConfigMigrations(parsed);
-  if (!applied.length) {
-    return { changed: false, applied: [] };
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupPath = `${filePath}.wrapper-migrate-${stamp}.bak`;
-  const tmpPath = `${filePath}.tmp-${process.pid}`;
-
-  try {
-    const stat = fs.statSync(filePath);
-    fs.copyFileSync(filePath, backupPath);
-    fs.writeFileSync(tmpPath, `${JSON.stringify(nextConfig, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: stat.mode & 0o777,
-    });
-    fs.renameSync(tmpPath, filePath);
-    console.log(`[migration] Repaired ${path.basename(filePath)} via wrapper: ${applied.map((item) => item.type).join(", ")} (backup: ${backupPath})`);
-    return { changed: true, applied, backupPath };
-  } catch (err) {
-    try {
-      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-    } catch {
-      // ignore cleanup errors
-    }
-    console.warn(`[migration] Failed to repair ${filePath}: ${err}`);
-    return { changed: false, applied: [], error: String(err) };
-  }
-}
-
 function isConfigured() {
   try {
     return resolveConfigCandidates().some((candidate) => fs.existsSync(candidate));
@@ -320,7 +275,6 @@ async function startGateway() {
   if (gatewayProc) return;
   if (!isConfigured()) throw new Error("Gateway cannot start: not configured");
 
-  repairConfigFileIfNeeded();
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
@@ -684,6 +638,9 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <input id="telegramToken" type="password" placeholder="123456:ABC..." />
     <label>Telegram user id (optional)</label>
     <input id="telegramUserId" placeholder="e.g. 123456789" />
+    <div class="muted" style="margin-top: 0.25rem">
+      If provided, setup will pre-authorize that Telegram user for DMs so you do not need pairing for your own account.
+    </div>
 
     <label>Telegram pairing code (optional)</label>
     <input id="telegramPairingCode" placeholder="e.g. WF6G56US" />
@@ -895,7 +852,6 @@ function runCmd(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 120_000;
 
-    repairConfigFileIfNeeded();
     const proc = childProcess.spawn(cmd, args, {
       ...opts,
       env: {
@@ -1045,13 +1001,19 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       } else {
         // Avoid `channels add` here (it has proven flaky across builds); write config directly.
         const token = payload.telegramToken.trim();
+        const telegramOwnerId = payload.telegramUserId?.trim() || "";
+        const telegramAllowFrom = /^\d+$/.test(telegramOwnerId) ? [telegramOwnerId] : undefined;
         const cfgObj = {
           enabled: true,
-          dmPolicy: "pairing",
+          dmPolicy: telegramAllowFrom ? "allowlist" : "pairing",
           botToken: token,
+          allowFrom: telegramAllowFrom,
           groupPolicy: "allowlist",
           streaming: "partial",
         };
+        if (telegramOwnerId && !telegramAllowFrom) {
+          extra += "\n[telegram] note: telegram user id was ignored because it is not a numeric Telegram user id\n";
+        }
         const set = await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "--json", "channels.telegram", JSON.stringify(cfgObj)]),
