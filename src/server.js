@@ -638,6 +638,9 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <input id="telegramToken" type="password" placeholder="123456:ABC..." />
     <label>Telegram user id (optional)</label>
     <input id="telegramUserId" placeholder="e.g. 123456789" />
+    <div class="muted" style="margin-top: 0.25rem">
+      If provided, setup will pre-authorize that Telegram user for DMs so you do not need pairing for your own account.
+    </div>
 
     <label>Telegram pairing code (optional)</label>
     <input id="telegramPairingCode" placeholder="e.g. WF6G56US" />
@@ -999,13 +1002,19 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       } else {
         // Avoid `channels add` here (it has proven flaky across builds); write config directly.
         const token = payload.telegramToken.trim();
+        const telegramOwnerId = payload.telegramUserId?.trim() || "";
+        const telegramAllowFrom = /^\d+$/.test(telegramOwnerId) ? [telegramOwnerId] : undefined;
         const cfgObj = {
           enabled: true,
-          dmPolicy: "pairing",
+          dmPolicy: telegramAllowFrom ? "allowlist" : "pairing",
           botToken: token,
+          allowFrom: telegramAllowFrom,
           groupPolicy: "allowlist",
-          streamMode: "partial",
+          streaming: "partial",
         };
+        if (telegramOwnerId && !telegramAllowFrom) {
+          extra += "\n[telegram] note: telegram user id was ignored because it is not a numeric Telegram user id\n";
+        }
         const set = await runCmd(
           OPENCLAW_NODE,
           clawArgs(["config", "set", "--json", "channels.telegram", JSON.stringify(cfgObj)]),
