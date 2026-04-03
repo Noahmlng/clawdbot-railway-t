@@ -70,6 +70,22 @@ function resolveGatewayToken() {
 const OPENCLAW_GATEWAY_TOKEN = resolveGatewayToken();
 process.env.OPENCLAW_GATEWAY_TOKEN = OPENCLAW_GATEWAY_TOKEN;
 const OPENCLAW_WEBHOOK_SECRET = process.env.OPENCLAW_WEBHOOK_SECRET?.trim() || "";
+const GOOGLE_CALENDAR_PLUGIN_ID = "openclaw-google-calendar";
+const GOOGLE_CALENDAR_PLUGIN_SOURCE_DIR =
+  process.env.OPENCLAW_GOOGLE_CALENDAR_PLUGIN_DIR?.trim() ||
+  "/app/plugins/openclaw-google-calendar";
+const GOOGLE_CALENDAR_DEFAULT_CREDENTIALS_PATH = path.join(
+  STATE_DIR,
+  "credentials",
+  "google-calendar",
+  "oauth-client.json",
+);
+const GOOGLE_CALENDAR_DEFAULT_TOKEN_PATH = path.join(
+  STATE_DIR,
+  "credentials",
+  "google-calendar",
+  "token.json",
+);
 
 const SETUP_PREFILL_ENV_MAP = {
   authSecret: ["OPENCLAW_SETUP_AUTH_SECRET", "MINIMAX_API_KEY"],
@@ -84,6 +100,26 @@ const SETUP_PREFILL_ENV_MAP = {
   customProviderApi: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_API"],
   customProviderApiKeyEnv: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_API_KEY_ENV"],
   customProviderModelId: ["OPENCLAW_SETUP_CUSTOM_PROVIDER_MODEL_ID"],
+  googleCalendarRedirectUri: [
+    "OPENCLAW_SETUP_GOOGLE_CALENDAR_REDIRECT_URI",
+    "GOOGLE_CALENDAR_OAUTH_REDIRECT_URI",
+  ],
+  googleCalendarDefaultCalendarId: [
+    "OPENCLAW_SETUP_GOOGLE_CALENDAR_DEFAULT_CALENDAR_ID",
+    "GOOGLE_CALENDAR_DEFAULT_CALENDAR_ID",
+  ],
+  googleCalendarDefaultTimeZone: [
+    "OPENCLAW_SETUP_GOOGLE_CALENDAR_DEFAULT_TIME_ZONE",
+    "GOOGLE_CALENDAR_DEFAULT_TIME_ZONE",
+  ],
+  googleCalendarConfirmationMode: [
+    "OPENCLAW_SETUP_GOOGLE_CALENDAR_CONFIRMATION_MODE",
+    "GOOGLE_CALENDAR_CONFIRMATION_MODE",
+  ],
+  googleCalendarUpcomingWindowDays: [
+    "OPENCLAW_SETUP_GOOGLE_CALENDAR_UPCOMING_WINDOW_DAYS",
+    "GOOGLE_CALENDAR_UPCOMING_WINDOW_DAYS",
+  ],
 };
 
 function buildSetupPrefillFromEnv() {
@@ -97,7 +133,115 @@ function buildSetupPrefillFromEnv() {
       }
     }
   }
+  const googleCalendarCredentialsJson = resolveSetupGoogleCalendarCredentialsJson();
+  if (googleCalendarCredentialsJson) {
+    defaults.googleCalendarCredentialsJson = googleCalendarCredentialsJson;
+  }
+
+  const googleCalendarEnabled = pickFirstEnvValue(["OPENCLAW_SETUP_GOOGLE_CALENDAR_ENABLED"]);
+  if (googleCalendarEnabled !== undefined) {
+    defaults.googleCalendarEnabled = parseBooleanish(googleCalendarEnabled, false);
+  }
+
+  const googleCalendarReadOnlyMode = pickFirstEnvValue([
+    "OPENCLAW_SETUP_GOOGLE_CALENDAR_READ_ONLY_MODE",
+    "GOOGLE_CALENDAR_READ_ONLY_MODE",
+  ]);
+  if (googleCalendarReadOnlyMode !== undefined) {
+    defaults.googleCalendarReadOnlyMode = parseBooleanish(googleCalendarReadOnlyMode, false);
+  }
+
   return defaults;
+}
+
+function pickFirstEnvValue(keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function parseBooleanish(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function resolveSetupGoogleCalendarCredentialsJson() {
+  const inlineJson = pickFirstEnvValue(["OPENCLAW_SETUP_GOOGLE_CALENDAR_CREDENTIALS_JSON"]);
+  if (inlineJson) return inlineJson;
+
+  const base64Value = pickFirstEnvValue(["OPENCLAW_SETUP_GOOGLE_CALENDAR_CREDENTIALS_JSON_BASE64"]);
+  if (!base64Value) return undefined;
+
+  try {
+    return Buffer.from(base64Value, "base64").toString("utf8").trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasNonEmptyText(value) {
+  return String(value ?? "").trim().length > 0;
+}
+
+function parsePositiveIntegerInput(value, fieldName, fallbackValue) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return fallbackValue;
+
+  const parsedValue = Number.parseInt(normalized, 10);
+  if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+    throw new Error(`${fieldName} must be a positive integer`);
+  }
+  return parsedValue;
+}
+
+function normalizeGoogleCalendarSetup(payload = {}) {
+  const rawCredentialsJson = String(payload.googleCalendarCredentialsJson || "").trim();
+  const rawRedirectUri = String(payload.googleCalendarRedirectUri || "").trim();
+  const rawDefaultCalendarId = String(payload.googleCalendarDefaultCalendarId || "").trim();
+  const rawDefaultTimeZone = String(payload.googleCalendarDefaultTimeZone || "").trim();
+  const rawConfirmationMode = String(payload.googleCalendarConfirmationMode || "").trim();
+  const rawUpcomingWindowDays = String(payload.googleCalendarUpcomingWindowDays || "").trim();
+
+  const normalized = {
+    enabled: parseBooleanish(payload.googleCalendarEnabled, false),
+    credentialsJson: rawCredentialsJson,
+    redirectUri: rawRedirectUri,
+    defaultCalendarId: rawDefaultCalendarId || "primary",
+    defaultTimeZone: rawDefaultTimeZone,
+    confirmationMode: rawConfirmationMode || "when-ambiguous",
+    upcomingWindowDays: parsePositiveIntegerInput(
+      payload.googleCalendarUpcomingWindowDays,
+      "googleCalendarUpcomingWindowDays",
+      7,
+    ),
+    readOnlyMode: parseBooleanish(payload.googleCalendarReadOnlyMode, false),
+  };
+
+  if (!["always", "when-ambiguous", "never"].includes(normalized.confirmationMode)) {
+    throw new Error("googleCalendarConfirmationMode must be always, when-ambiguous, or never");
+  }
+
+  normalized.requested =
+    normalized.enabled ||
+    hasNonEmptyText(rawCredentialsJson) ||
+    hasNonEmptyText(rawRedirectUri) ||
+    (hasNonEmptyText(rawDefaultCalendarId) && rawDefaultCalendarId !== "primary") ||
+    hasNonEmptyText(rawDefaultTimeZone) ||
+    rawConfirmationMode === "always" ||
+    rawConfirmationMode === "never" ||
+    (hasNonEmptyText(rawUpcomingWindowDays) && rawUpcomingWindowDays !== "7") ||
+    normalized.readOnlyMode;
+
+  return normalized;
 }
 
 function normalizeAllowedOrigin(rawOrigin) {
@@ -689,6 +833,50 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   </div>
 
   <div class="card">
+    <h2>2c) Optional: Google Calendar</h2>
+    <p class="muted">This installs the bundled <code>openclaw-google-calendar</code> plugin, writes its config into OpenClaw, and stores Google OAuth files under the persistent state directory.</p>
+
+    <label style="font-weight:400">
+      <input id="googleCalendarEnabled" type="checkbox" style="width:auto; margin-right:0.4rem" />
+      Enable Google Calendar plugin during setup
+    </label>
+
+    <label>Google OAuth client JSON (optional but recommended)</label>
+    <textarea id="googleCalendarCredentialsJson" placeholder='Paste the Google OAuth client JSON from Google Cloud Console' style="width:100%; min-height: 140px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;"></textarea>
+    <div class="muted" style="margin-top: 0.25rem">
+      Use a Google OAuth client that has a redirect URI matching the plugin flow, for example <code>http://127.0.0.1:3000/oauth2callback</code>.
+    </div>
+
+    <label>OAuth redirect URI (optional override)</label>
+    <input id="googleCalendarRedirectUri" placeholder="http://127.0.0.1:3000/oauth2callback" />
+
+    <label>Default calendar id</label>
+    <input id="googleCalendarDefaultCalendarId" placeholder="primary" value="primary" />
+
+    <label>Default time zone (optional)</label>
+    <input id="googleCalendarDefaultTimeZone" placeholder="Asia/Shanghai" />
+
+    <label>Confirmation mode</label>
+    <select id="googleCalendarConfirmationMode">
+      <option value="when-ambiguous">when-ambiguous</option>
+      <option value="always">always</option>
+      <option value="never">never</option>
+    </select>
+
+    <label>Upcoming window days</label>
+    <input id="googleCalendarUpcomingWindowDays" type="number" min="1" value="7" />
+
+    <label style="font-weight:400">
+      <input id="googleCalendarReadOnlyMode" type="checkbox" style="width:auto; margin-right:0.4rem" />
+      Start in read-only mode
+    </label>
+
+    <div class="muted" style="margin-top: 0.5rem">
+      After setup finishes, complete Google auth inside OpenClaw with <code>google_calendar_begin_auth</code> and <code>google_calendar_complete_auth</code>.
+    </div>
+  </div>
+
+  <div class="card">
     <h2>3) Run onboarding</h2>
     <button id="run">Run setup</button>
     <button id="pairingApprove" style="background:#1f2937; margin-left:0.5rem">Approve pairing</button>
@@ -890,6 +1078,163 @@ function runCmd(cmd, args, opts = {}) {
   });
 }
 
+function summarizeCommandResult(label, result, options = {}) {
+  const includeOutput = options.includeOutput !== false;
+  const output = redactSecrets(result?.output || "");
+  const parts = [`[${label}] exit=${result?.code ?? "?"}`];
+
+  if (includeOutput) {
+    parts.push(`(output ${output.length} chars)`);
+  }
+
+  let text = parts.join(" ");
+  if (includeOutput) {
+    text += `\n${output || "(no output)"}`;
+  }
+  return `${text}\n`;
+}
+
+async function ensureToolsAllowIncludes(entryName) {
+  const current = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "tools.allow"]));
+  let allow = [];
+
+  if (current.code === 0) {
+    const trimmed = String(current.output || "").trim();
+    const arrayStart = trimmed.indexOf("[");
+    if (arrayStart >= 0) {
+      try {
+        const parsed = JSON.parse(trimmed.slice(arrayStart));
+        if (Array.isArray(parsed)) {
+          allow = parsed.filter((value) => typeof value === "string" && value.trim());
+        }
+      } catch {
+        // Leave allow empty and overwrite with the safe minimum below.
+      }
+    }
+  }
+
+  if (!allow.includes(entryName)) {
+    allow.push(entryName);
+  }
+
+  const setResult = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["config", "set", "--json", "tools.allow", JSON.stringify(allow)]),
+  );
+
+  return { allow, result: setResult };
+}
+
+function persistGoogleCalendarCredentials(credentialsJson) {
+  const parsedCredentials = JSON.parse(credentialsJson);
+  if (!parsedCredentials || typeof parsedCredentials !== "object" || Array.isArray(parsedCredentials)) {
+    throw new Error("Google Calendar OAuth client JSON must be a JSON object");
+  }
+
+  fs.mkdirSync(path.dirname(GOOGLE_CALENDAR_DEFAULT_CREDENTIALS_PATH), { recursive: true });
+  fs.writeFileSync(
+    GOOGLE_CALENDAR_DEFAULT_CREDENTIALS_PATH,
+    `${JSON.stringify(parsedCredentials, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+
+  return GOOGLE_CALENDAR_DEFAULT_CREDENTIALS_PATH;
+}
+
+async function configureGoogleCalendarPlugin(payload) {
+  const settings = normalizeGoogleCalendarSetup(payload);
+  if (!settings.requested) return "";
+
+  let extra = "";
+
+  if (!fs.existsSync(GOOGLE_CALENDAR_PLUGIN_SOURCE_DIR)) {
+    return `\n[google calendar] skipped: bundled plugin source is missing at ${GOOGLE_CALENDAR_PLUGIN_SOURCE_DIR}\n`;
+  }
+
+  let credentialsPath =
+    process.env.GOOGLE_CALENDAR_CREDENTIALS_PATH?.trim() ||
+    (fs.existsSync(GOOGLE_CALENDAR_DEFAULT_CREDENTIALS_PATH) ? GOOGLE_CALENDAR_DEFAULT_CREDENTIALS_PATH : "");
+
+  if (settings.credentialsJson) {
+    try {
+      credentialsPath = persistGoogleCalendarCredentials(settings.credentialsJson);
+      extra += `\n[google calendar credentials] wrote ${credentialsPath}\n`;
+    } catch (err) {
+      throw new Error(`Invalid Google Calendar OAuth client JSON: ${String(err)}`);
+    }
+  }
+
+  const tokenPath = process.env.GOOGLE_CALENDAR_TOKEN_PATH?.trim() || GOOGLE_CALENDAR_DEFAULT_TOKEN_PATH;
+  fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
+
+  const installResult = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["plugins", "install", "-l", GOOGLE_CALENDAR_PLUGIN_SOURCE_DIR]),
+    { timeoutMs: 5 * 60 * 1000 },
+  );
+  extra += summarizeCommandResult("google calendar install", installResult);
+  if (installResult.code !== 0 && !/already installed/i.test(installResult.output || "")) {
+    throw new Error("Google Calendar plugin install failed");
+  }
+
+  const enableResult = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["plugins", "enable", GOOGLE_CALENDAR_PLUGIN_ID]),
+  );
+  extra += summarizeCommandResult("google calendar enable", enableResult);
+  if (enableResult.code !== 0 && !/already enabled/i.test(enableResult.output || "")) {
+    throw new Error("Google Calendar plugin enable failed");
+  }
+
+  const pluginEntry = {
+    enabled: true,
+    config: {
+      credentialsPath: credentialsPath || undefined,
+      tokenPath,
+      oauthRedirectUri: settings.redirectUri || undefined,
+      defaultCalendarId: settings.defaultCalendarId,
+      defaultTimeZone: settings.defaultTimeZone || undefined,
+      confirmationMode: settings.confirmationMode,
+      upcomingWindowDays: settings.upcomingWindowDays,
+      readOnlyMode: settings.readOnlyMode,
+    },
+  };
+
+  const configResult = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs([
+      "config",
+      "set",
+      "--json",
+      `plugins.entries.${GOOGLE_CALENDAR_PLUGIN_ID}`,
+      JSON.stringify(pluginEntry),
+    ]),
+  );
+  extra += summarizeCommandResult("google calendar config", configResult);
+  if (configResult.code !== 0) {
+    throw new Error("Google Calendar plugin config write failed");
+  }
+
+  const allowResult = await ensureToolsAllowIncludes(GOOGLE_CALENDAR_PLUGIN_ID);
+  extra += summarizeCommandResult("google calendar tools.allow", allowResult.result);
+  if (allowResult.result.code !== 0) {
+    throw new Error("Google Calendar tools.allow update failed");
+  }
+
+  if (!credentialsPath) {
+    extra +=
+      "\n[google calendar] note: OAuth client credentials are not configured yet. " +
+      "Paste the client JSON into /setup or set GOOGLE_CALENDAR_CREDENTIALS_PATH before running auth.\n";
+  } else {
+    extra += `\n[google calendar] credentialsPath=${credentialsPath}\n`;
+  }
+
+  extra += `\n[google calendar] tokenPath=${tokenPath}\n`;
+  extra += `\n[google calendar] next step: use google_calendar_begin_auth, then google_calendar_complete_auth with the returned code.\n`;
+
+  return extra;
+}
+
 app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
   const respondJson = (status, body) => {
     if (res.writableEnded || res.headersSent) return;
@@ -1078,6 +1423,8 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       );
       extra += `\n[telegram pairing approve] exit=${approve.code} (output ${approve.output.length} chars)\n${approve.output || "(no output)"}`;
     }
+
+    extra += await configureGoogleCalendarPlugin(payload);
 
     // Apply changes immediately.
     await restartGateway();

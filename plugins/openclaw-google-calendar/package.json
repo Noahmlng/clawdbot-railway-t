@@ -1,0 +1,51 @@
+{
+  "name": "@alefdigitalsolutions/openclaw-google-calendar-plugin",
+  "version": "0.1.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/you/openclaw-google-calendar.git"
+  },
+  "author": "Louis Ronald",
+  "homepage": "https://github.com/you/openclaw-google-calendar#readme",
+  "bugs": {
+    "url": "https://github.com/you/openclaw-google-calendar/issues"
+  },
+  "description": "OpenClaw Google Calendar plugin scaffold with skills, tools, and plugin metadata.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": ["openclaw", "plugin", "google-calendar", "calendar"],
+  "files": [
+    "src",
+    "skills",
+    "docs",
+    "examples",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test tests/tool-registration.test.mjs tests/tool-execution.test.mjs tests/google-calendar-gateway.test.mjs tests/google-calendar-auth.test.mjs tests/calendar-date-time-handling.test.mjs tests/confirmation-behavior.test.mjs tests/skill-alignment.test.mjs tests/error-handling.test.mjs tests/repository-validation.test.mjs tests/local-install-docs.test.mjs"
+  },
+  "dependencies": {
+    "googleapis": "^171.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3"
+  }
+}

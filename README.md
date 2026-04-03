@@ -7,6 +7,7 @@ This repo packages **OpenClaw** for Railway with a small **/setup** web wizard s
 - **OpenClaw Gateway + Control UI** (served at `/` and `/openclaw`)
 - A friendly **Setup Wizard** at `/setup` (protected by a password)
 - Persistent state via **Railway Volume** (so config/credentials/memory survive redeploys)
+- Bundled **Google Calendar plugin** wiring for OpenClaw setup and OAuth file persistence
 - One-click **Export backup** (so users can migrate off Railway later)
 - **Import backup** from `/setup` (advanced recovery)
 
@@ -40,6 +41,10 @@ Optional:
 - `OPENCLAW_SETUP_TELEGRAM_USER_ID` — prefill Telegram user id in `/setup`
 - `OPENCLAW_SETUP_TELEGRAM_PAIRING_CODE` — prefill Telegram pairing code in `/setup` and auto-approve during setup
 - `OPENCLAW_SETUP_CUSTOM_PROVIDER_ID`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_BASE_URL`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_API`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_API_KEY_ENV`, `OPENCLAW_SETUP_CUSTOM_PROVIDER_MODEL_ID` — prefill advanced custom provider fields
+- `OPENCLAW_SETUP_GOOGLE_CALENDAR_ENABLED` — pre-check Google Calendar plugin setup in `/setup`
+- `OPENCLAW_SETUP_GOOGLE_CALENDAR_CREDENTIALS_JSON` or `OPENCLAW_SETUP_GOOGLE_CALENDAR_CREDENTIALS_JSON_BASE64` — prefill the Google OAuth client JSON in `/setup`
+- `OPENCLAW_SETUP_GOOGLE_CALENDAR_REDIRECT_URI`, `OPENCLAW_SETUP_GOOGLE_CALENDAR_DEFAULT_CALENDAR_ID`, `OPENCLAW_SETUP_GOOGLE_CALENDAR_DEFAULT_TIME_ZONE`, `OPENCLAW_SETUP_GOOGLE_CALENDAR_CONFIRMATION_MODE`, `OPENCLAW_SETUP_GOOGLE_CALENDAR_UPCOMING_WINDOW_DAYS`, `OPENCLAW_SETUP_GOOGLE_CALENDAR_READ_ONLY_MODE` — prefill Google Calendar plugin options in `/setup`
+- `GOOGLE_CALENDAR_CREDENTIALS_PATH`, `GOOGLE_CALENDAR_TOKEN_PATH`, `GOOGLE_CALENDAR_OAUTH_REDIRECT_URI`, `GOOGLE_CALENDAR_DEFAULT_CALENDAR_ID`, `GOOGLE_CALENDAR_DEFAULT_TIME_ZONE`, `GOOGLE_CALENDAR_CONFIRMATION_MODE`, `GOOGLE_CALENDAR_UPCOMING_WINDOW_DAYS`, `GOOGLE_CALENDAR_READ_ONLY_MODE` — environment-level overrides consumed by the plugin itself
 
 Notes:
 - This template pins OpenClaw to a released version by default via Docker build arg `OPENCLAW_GIT_REF` (override if you want `main`).
@@ -55,6 +60,35 @@ Then:
   - Your browser will prompt for **HTTP Basic auth**. Use any username; the password is `SETUP_PASSWORD`.
 - Complete setup
 - Visit `https://<your-app>.up.railway.app/` and `/openclaw` (same Basic auth)
+
+### Google Calendar plugin
+
+This template now bundles `alefsolutions/openclaw-google-calendar` into the image so setup does not need runtime GitHub access.
+
+To enable it in `/setup`:
+
+1. Open the **Google Calendar** section.
+2. Check **Enable Google Calendar plugin during setup**.
+3. Paste your Google OAuth client JSON from Google Cloud Console.
+4. Optionally set redirect URI, timezone, confirmation mode, or read-only mode.
+5. Run setup.
+
+The wrapper will:
+
+- install/link the bundled plugin into OpenClaw
+- write plugin config under `plugins.entries.openclaw-google-calendar`
+- store the OAuth client JSON and token file paths under the persistent state directory
+- add `openclaw-google-calendar` to `tools.allow`
+
+After setup, finish Google authorization inside OpenClaw by using:
+
+- `google_calendar_begin_auth`
+- `google_calendar_complete_auth`
+
+The default persisted paths are:
+
+- credentials: `/data/.openclaw/credentials/google-calendar/oauth-client.json`
+- token: `/data/.openclaw/credentials/google-calendar/token.json`
 
 ## Support / community
 

@@ -72,6 +72,12 @@ RUN npm install --omit=dev && npm cache clean --force
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
 
+# Bundle the Google Calendar plugin source so Railway/runtime setup does not need
+# to fetch GitHub repositories on first boot.
+COPY plugins ./plugins
+RUN npm install --prefix /app/plugins/openclaw-google-calendar --omit=dev \
+  && npm cache clean --force
+
 # Provide an openclaw executable
 RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"' > /usr/local/bin/openclaw \
   && chmod +x /usr/local/bin/openclaw

@@ -154,7 +154,11 @@
       var defaults = (j && j.defaults) ? j.defaults : {};
       Object.keys(defaults).forEach(function (id) {
         var el = document.getElementById(id);
-        if (!el || el.value) return;
+        if (!el) return;
+        if (el.type === 'checkbox') {
+          el.checked = defaults[id] === true || String(defaults[id]).toLowerCase() === 'true' || String(defaults[id]) === '1';
+          return;
+        }
         el.value = defaults[id];
       });
     }).catch(function (_e) {
@@ -178,7 +182,16 @@
       customProviderBaseUrl: document.getElementById('customProviderBaseUrl').value,
       customProviderApi: document.getElementById('customProviderApi').value,
       customProviderApiKeyEnv: document.getElementById('customProviderApiKeyEnv').value,
-      customProviderModelId: document.getElementById('customProviderModelId').value
+      customProviderModelId: document.getElementById('customProviderModelId').value,
+
+      googleCalendarEnabled: document.getElementById('googleCalendarEnabled').checked,
+      googleCalendarCredentialsJson: document.getElementById('googleCalendarCredentialsJson').value,
+      googleCalendarRedirectUri: document.getElementById('googleCalendarRedirectUri').value,
+      googleCalendarDefaultCalendarId: document.getElementById('googleCalendarDefaultCalendarId').value,
+      googleCalendarDefaultTimeZone: document.getElementById('googleCalendarDefaultTimeZone').value,
+      googleCalendarConfirmationMode: document.getElementById('googleCalendarConfirmationMode').value,
+      googleCalendarUpcomingWindowDays: document.getElementById('googleCalendarUpcomingWindowDays').value,
+      googleCalendarReadOnlyMode: document.getElementById('googleCalendarReadOnlyMode').checked
     };
 
     logEl.textContent = 'Running...\n';
